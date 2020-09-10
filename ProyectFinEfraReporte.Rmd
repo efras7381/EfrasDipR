@@ -1,0 +1,289 @@
+---
+title: "Ejemplo práctico de Twitter con RStudio"
+author: "Efrain Juarez"
+date: "9/9/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+INTRODUCCIÓN
+
+  Twitter es una fuente de información para estudio de Social Media. Este informe pretender que sea una manual para extracción y procesamiento de datos, Dando opinion de que se genero de los tuits que los usuarios comentan hacerca del paquete rtweet en idioma español e ingles.
+  
+  Se utilizara los siguientes paquetes:
+
+
+```{r, echo=FALSE}
+library(rtweet)
+library(tidyverse)
+library(tidytext)
+library(tm)
+library(lubridate)
+library(zoo)
+library(scales)
+library(wordcloud)
+
+```
+DE LA OBTENCION DE LA INFORMACIÓN TWITTER
+
+Para poder extraer datos de Twitter es necesario estar registrado en la plataforma y, a partir de la cuenta, crear una Twitter App asociada. Twitter App es el mecanismo que proporciona Twitter para desarrolladores que quieran acceder a los contenidos de Twitter a través de programas. Al crear una Twitter App, Twitter proporciona una serie de claves y tokens de identificación que permiten acceder a la aplicación y extraer información.
+
+
+```{r, echo=FALSE}
+create_token(app = "xxxx","xxxxx","xxxxx",access_token = "xx-xxx",access_secret = "xxxx",set_renv = TRUE)
+
+```
+Posteriormente solicitamos los tweets de la palabra avión presidencial que es el de la paqueteria rtweet.
+
+También puede hacerse una búsqueda por múltiples términos. Por ejemplo, buscando “avión+presidencial” hace que twitter devuelva resultads donde las palabras aparecen juntas y en ese orden; como alternativa, al optar por “avión presidencial” se obtienen tweets donde aparezcan esas palabras en cualquier parte del texto, sin importar su orden o si aparecen contiguas.
+
+Donde conseguimos 31,840 tuits
+
+```{r, echo= TRUE}
+
+avionPMex1 <- search_tweets(q = "avión+presidencial", n = 18000, retryonratelimit = TRUE)
+
+```
+PROCESO DE MANJEO DE DATAFRAME
+Ahora separamos las columnas fecha y hora y las llevamos a tipo número.
+
+Separamos la columna created_at en Fecha, Hora y la Fecha en Periodo, Mes y Día sin perder el origen 
+
+```{r, echo=FALSE}
+avionPMex1 <- 
+  avionPMex1 %>%
+  separate(created_at, into = c("Fecha", "Hora"), sep = " ",remove = FALSE) %>% separate(Fecha, into = c("Periodo","Mes","Dia"), sep = "-",remove = FALSE)
+
+```
+Y la Hora en horas, minutos, segundos. Sin perder el origen
+
+```{r, echo=FALSE}
+avionPMex1 <- avionPMex1 %>% separate(Hora, into = c("horas","minutos","segundos"), sep = ":",remove = FALSE)
+```
+Vamos a convertir a tipo numerico las columnas de periodo , mes, horas, minutos y segundos, verificando el tipo de entrada yla salida
+```{r, echo=TRUE}
+class(avionPMex1$Periodo)
+class(avionPMex1$Mes)
+class(avionPMex1$Dia)
+class(avionPMex1$horas)
+class(avionPMex1$minutos)
+class(avionPMex1$segundos)
+
+avionPMex1$Periodo <- as.numeric(avionPMex1$Periodo)
+avionPMex1$Mes <- as.numeric(avionPMex1$Mes)
+avionPMex1$Dia <- as.numeric(avionPMex1$Dia)
+avionPMex1$horas <- as.numeric(avionPMex1$horas)
+avionPMex1$minutos <- as.numeric(avionPMex1$minutos)
+avionPMex1$segundos <- as.numeric(avionPMex1$segundos)
+
+class(avionPMex1$Periodo)
+class(avionPMex1$Mes)
+class(avionPMex1$Dia)
+class(avionPMex1$horas)
+class(avionPMex1$minutos)
+class(avionPMex1$segundos)
+
+#```
+Verificamos en que idiomas estan los tuits
+#```{r, echo= TRUE}
+
+table(avionPMex1$lang)
+
+```
+
+Generar una nueva dataframe denominado avionPMex2 que tenga únicamente los idiomas "en" y "es"
+
+```{r, echo= TRUE}
+avionPMex2 <- avionPMex1 %>% filter(avionPMex1$lang =="en" | avionPMex1$lang=="es")
+
+```
+
+Verificamos como quedaron los idiomas en el nuevo dataframe de los tuits
+
+```{r, echo= TRUE}
+
+table(avionPMex2$lang)
+
+
+```
+
+Verificamos los encabezados en la base de datos que creamos avionPMex2
+
+```{r, echo= TRUE}
+
+names(avionPMex2)
+
+
+```
+Aqui generamos un Top de los 10 lugares mas frecuentes que tuiteron
+```{r, echo=TRUE}
+
+avionPMex2 %>%
+    filter(location != "", !is.na(location)) %>% 
+    count(location) %>% 
+    top_n(10, n) %>% 
+    ggplot() +
+      geom_col(aes(x = reorder(location, n), y = n)) + 
+      coord_flip() +
+      labs(title = "Procedencia de los usuarios",
+           x = "ubicación",
+           y = "cantidad")
+
+```
+
+Y vemos que no esta estandarizada la ubicación 
+
+
+Generar una nueva dataframe de avionPMex2 que tenga únicamente algunos datos y columnas en la dataframe avionPMex3
+
+```{r, echo=FALSE}
+avionPMex3 <- data.frame(Fecha=avionPMex2$Fecha,Periodo=avionPMex2$Periodo,Mes=avionPMex2$Mes,Dia=avionPMex2$Dia,Hora=avionPMex2$Hora,Horas=avionPMex2$horas,Minutos=avionPMex2$minutos,Segundos=avionPMex2$segundos,Text=avionPMex2$text,lenguaje=avionPMex2$lang)
+
+
+```
+
+En este momento ya podemos exportar el data frame, desarrollado para publicación y uso en csv
+
+```{r, echo=TRUE}
+write.csv(x = avionPMex3, file = "avionPMex3.csv", row.names = FALSE)
+
+
+```
+
+Ahora descargamos el lexico "es" y "en"
+
+```{r, echo=FALSE}
+download.file("https://raw.githubusercontent.com/jboscomendoza/rpubs/master/sentimientos_afinn/lexico_afinn.en.es.csv",           "lexico_afinn.en.es.csv")
+
+
+```
+importamos el lexico a R
+
+```{r, echo=FALSE}
+
+afinn <- read.csv("lexico_afinn.en.es.csv", stringsAsFactors = F, fileEncoding = "latin1") %>% tbl_df()
+```
+Preparamos el tema (consultar libro de ggplot2)
+
+```{r, echo=FALSE}
+
+tema_graf <-
+  theme_minimal() +
+  theme(text = element_text(family = "serif"),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = "#EBEBEB", colour = NA),
+        legend.position = "none",
+        legend.box.background = element_rect(fill = "#EBEBEB", colour = NA))
+
+```
+
+Realizamos la calificacion de las palabras de Text
+```{r, echo=TRUE}
+avionPMex4 <- 
+  avionPMex3 %>%
+  unnest_tokens(input = "Text", output = "Palabra") %>%
+  inner_join(afinn, ., by = "Palabra") %>%
+  mutate(Tipo = ifelse(Puntuacion > 0, "Positiva", "Negativa")) 
+```
+Visualizacion de sentimientos por idioma
+```{r, echo=TRUE}
+
+ggplot(data = avionPMex4) +
+  geom_bar(mapping = aes(x = lenguaje))
+
+```
+Y nos damos cuenta que al realizar esto se solo quedan en español
+
+Verificando como queda la columna de Lenguaje en 
+```{r, echo=TRUE}
+table(avionPMex4$lenguaje)
+```
+Visualización de sentimientos por Tipo agregando como referencia el lenguaje
+```{r, echo=FALSE}
+ggplot(data = avionPMex4) +
+  geom_bar(mapping = aes(x = Tipo)) + facet_wrap(~ lenguaje, nrow = 2)
+```
+OBSERVACIONES.
+
+Con esta gráfica, podemos visualizar que el impacto del evento fué negativo en general, hablando solamente de español, y nos damos cuenta de que en español tuvo mucho impacto
+
+Este análisis es cuantitativo basado en las gráficas, ahora proporcionaremos análisis cualitativo.
+
+Español positivo
+````{r, echo = TRUE}
+
+sum((avionPMex4$lenguaje=="es")&(avionPMex4$Tipo=="Positiva"))
+
+````
+Español Negativo
+````{r, echo = FALSE}
+
+sum((avionPMex4$lenguaje=="es")&(avionPMex4$Tipo=="Negativa"))
+
+````
+visualizacion de sentimientos por palabra
+```{r, echo=TRUE}
+map(c("Positiva", "Negativa"), function(sentimiento) {
+  avionPMex4 %>%
+    filter(Tipo ==  sentimiento) %>%
+    group_by(lenguaje) %>%
+    count(Palabra, sort = T) %>%
+    top_n(n = 10, wt = n) %>%
+    ggplot() +
+    aes(Palabra, n, fill = lenguaje) +
+    geom_col() +
+    facet_wrap("lenguaje", scales = "free") +
+    scale_y_continuous(expand = c(0, 0)) +
+    coord_flip() +
+    labs(title = sentimiento) +
+    tema_graf
+})
+```
+Analicemos ahora el impacto positivo (negativo) que obtuvo nuestra búsqueda por día
+
+```{r, echo = TRUE}
+
+ggplot(data = avionPMex4) +
+  geom_bar(mapping = aes(x = Dia))
+
+
+```
+
+Filtrara la palabra no en nuevo data frame avionPMex5
+```{r, echo = FALSE}
+
+ avionPMex5 <-
+  avionPMex4 %>%
+  filter(Palabra != "no")
+
+
+
+```
+
+Visualizacion de sentimientos por palabra sin "no" en data frame avionPMex5
+
+```{r, echo=TRUE}
+map(c("Positiva", "Negativa"), function(sentimiento) {
+  avionPMex5 %>%
+    filter(Tipo ==  sentimiento) %>%
+    group_by(lenguaje) %>%
+    count(Palabra, sort = T) %>%
+    top_n(n = 10, wt = n) %>%
+    ggplot() +
+    aes(Palabra, n, fill = lenguaje) +
+    geom_col() +
+    facet_wrap("lenguaje", scales = "free") +
+    scale_y_continuous(expand = c(0, 0)) +
+    coord_flip() +
+    labs(title = sentimiento) +
+    tema_graf
+})
+```
+Realizamos un nube de palabras con un palabras aleatorias
+
+```{r, echo = TRUE}
+
+wordcloud(avionPMex5$Palabra, max.words = 200, random.order = F, colors = brewer.pal(name = "Dark2", n=8))
+
+```
+
